@@ -1,5 +1,5 @@
-use wgpu-rust::run;
+use wgpu_rust::run;
 
-fn main(){
+fn main() {
     run();
 }

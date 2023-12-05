@@ -117,7 +117,7 @@ impl State {
     }
 
     #[allow(unused_variables)]
-    fn input(&mut self, event: &WindowEvent) -> bool {
+    fn input(&mut self, event: winit::event::WindowEvent) -> bool {
         false
     }
 
@@ -139,6 +139,10 @@ impl State {
             let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    // color_attachment
+                    // describes where we
+                    // are going to draw
+                    // our color to.
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {

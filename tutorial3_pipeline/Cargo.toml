@@ -11,4 +11,20 @@ env_logger = "0.10.1"
 log = "0.4.20"
 pollster = "0.3.0"
 wgpu = "0.18.0"
-winit = "0.29.4"
+winit = { version = "0.29", features = ["rwh_05"]} # rwh_05 is needed for winit 0.29
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.6"
+console_log = "1.0"
+wgpu = { version = "0.18.0", features = ["webgl"]}
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "Window",
+]}
+
+[[bin]]
+name = "tutorial3_pipeline"
+path = "src/main.rs"

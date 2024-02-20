@@ -1,3 +1,4 @@
+use crate::WindowEvent::KeyboardInput;
 use std::iter;
 
 use wgpu::Instance;
@@ -227,7 +228,7 @@ pub async fn run() {
         }
     }
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     #[cfg(target_arch = "wasm32")]

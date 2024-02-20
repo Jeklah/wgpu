@@ -4,4 +4,4 @@
 # Added by cargo
 
 /target
-**/**/*.lock
+*/*.lock

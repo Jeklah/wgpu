@@ -1,7 +1,7 @@
-use crate::WindowEvent::KeyboardInput;
+// use crate::WindowEvent::KeyboardInput;
 use std::iter;
 
-use wgpu::Instance;
+// use wgpu::Instance;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -37,7 +37,7 @@ impl State {
         //
         // The surface needs to live as long as the window that created it.
         // State owns the window so this should be safe.
-        let surface = unsafe { (&instance).create_surface(&window) }.unwrap();
+        let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -68,13 +68,13 @@ impl State {
 
         let surface_caps = surface.get_capabilities(&adapter);
         // Shader code in this tutorial assumes an Srgb surface texture.
-        // Using a different one will result in all the colors comingt out darker. If you want to
+        // Using a different one will result in all the colors coming out darker. If you want to
         // support non-srgb surfaces, you'll need to account for that when drawing to the frame.
         let surface_format = surface_caps
             .formats
             .iter()
             .copied()
-            .find(|format| format.is_srgb())
+            .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
@@ -114,7 +114,10 @@ impl State {
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent::REPLACE,
+                        alpha: wgpu::BlendComponent::REPLACE,
+                    }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -146,8 +149,8 @@ impl State {
             surface,
             device,
             queue,
-            config,
             size,
+            config,
             render_pipeline,
             window,
         }
@@ -258,7 +261,7 @@ pub async fn run() {
     // before returning.
     let mut state = State::new(window).await;
 
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, control_flow| {
         match event {
             Event::WindowEvent {
                 ref event,

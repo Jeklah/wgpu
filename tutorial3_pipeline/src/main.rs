@@ -1,3 +1,5 @@
+use tutorial3_pipeline::run;
+
 fn main() {
-    println!("Hello, world!");
+    pollster::block_on(run());
 }

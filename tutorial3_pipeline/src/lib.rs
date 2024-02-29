@@ -235,7 +235,7 @@ pub async fn run() {
         }
     }
 
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     #[cfg(target_arch = "wasm32")]
@@ -261,7 +261,7 @@ pub async fn run() {
     // before returning.
     let mut state = State::new(window).await;
 
-    event_loop.run(move |event, control_flow| {
+    event_loop.run(move |event, _, control_flow| {
         match event {
             Event::WindowEvent {
                 ref event,
@@ -286,7 +286,8 @@ pub async fn run() {
                             // new_inner_size is &mut so we have to dereference it twice
                             state.resize(**new_inner_size);
                         }
-                        _ => {}
+                        _ => {} // Is this needed as the closure doesn't take 3 arguments, so the
+                                // unnecessary one can be removed
                     }
                 }
             }

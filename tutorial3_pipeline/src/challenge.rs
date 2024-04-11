@@ -1,7 +1,7 @@
 use std::iter;
 
 use winit::{
-    even::*,
+    event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -77,12 +77,12 @@ impl State {
             width: size.width,
             height: size.height,
             present_mode: surface_caps.present_modes[0],
-            alpha_modes: surface_caps.alpha_modes[0],
+            alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
         };
         surface.configure(&device, &config);
 
-        let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
@@ -105,7 +105,7 @@ impl State {
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: "fs_main",
-                targets: &[wgpu::ColorTargetState {
+                targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent::REPLACE,
@@ -119,7 +119,6 @@ impl State {
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
                 // Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
                 // or Features::POLYGON_MODE_POINT.
                 polygon_mode: wgpu::PolygonMode::Fill,
@@ -139,13 +138,13 @@ impl State {
             multiview: None,
         });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDesciptor {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Challenge Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("challenge_shader.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("challenge.wgsl").into()),
         });
 
         let challenge_render_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("Render Pipeline"),
                 layout: Some(&render_pipeline_layout),
                 vertex: wgpu::VertexState {
@@ -154,7 +153,7 @@ impl State {
                     buffers: &[],
                 },
                 fragment: Some(wgpu::FragmentState {
-                    module &shader,
+                    module: &shader,
                     entry_point: "fs_main",
                     targets: &[Some(wgpu::ColorTargetState {
                         format: config.format,
@@ -170,7 +169,6 @@ impl State {
                     polygon_mode: wgpu::PolygonMode::Fill,
                     // Setting this to anything other than Fill requires Features::POLYGON_MODE_LINE
                     // or Features::POLYGON_MODE_POINT.
-                    polygon_mode: wgpu::PolygonMode::Fill,
                     ..Default::default()
                 },
                 depth_stencil: None,
@@ -195,7 +193,6 @@ impl State {
             render_pipeline,
             challenge_render_pipeline,
             use_color,
-            size,
             window,
         }
     }
@@ -204,7 +201,7 @@ impl State {
         &self.window
     }
 
-    pub fn resize(&mut self, event: &WindowEvent) -> bool {
+    pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
@@ -214,7 +211,7 @@ impl State {
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
-        match  event {
+        match event {
             WindowEvent::KeyboardInput {
                 input:
                     KeyboardInput {
@@ -244,7 +241,7 @@ impl State {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
-    
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -281,16 +278,14 @@ impl State {
     }
 }
 
-fn fn main() {
+fn main() {
     pollster::block_on(run());
 }
 
 async fn run() {
     env_logger::init();
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
-        .build(&event_loop)
-        .unwrap(); // Unwrap because we're not handling the error here
+    let window = WindowBuilder::new().build(&event_loop).unwrap(); // Unwrap because we're not handling the error here
 
     let mut state = State::new(window).await;
 
@@ -303,17 +298,17 @@ async fn run() {
                 if !state.input(event) {
                     match event {
                         WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                input:
-                                    KeyboardInput {
-                                        state: ElementState::Released,
-                                        virtual_keycode: Some(VirtualKeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            } => *control_flow = ControlFlow::Exit,
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Released,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(physical_size) => {
-                            state.resize(physical_size);
+                            state.resize(*physical_size);
                         }
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                             state.resize(**new_inner_size);
@@ -325,7 +320,7 @@ async fn run() {
             Event::RedrawRequested(window_id) if window_id == state.window().id() => {
                 state.update();
                 match state.render() {
-                    OK(_) => {}
+                    Ok(_) => {}
                     // Reconfigur the surface if lost
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                         state.resize(state.size);
@@ -343,5 +338,5 @@ async fn run() {
             }
             _ => {}
         }
-    });    
+    });
 }

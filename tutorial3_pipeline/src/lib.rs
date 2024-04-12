@@ -1,5 +1,3 @@
-pub mod challenge;
-
 // use crate::WindowEvent::KeyboardInput;
 use std::iter;
 

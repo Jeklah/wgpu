@@ -30,3 +30,7 @@ web-sys = { version = "0.3", features = [
 [[bin]]
 name = "tutorial3_pipeline"
 path = "src/main.rs"
+
+[[bin]]
+name = "tutorial3_challenge"
+path = "src/challenge.rs"

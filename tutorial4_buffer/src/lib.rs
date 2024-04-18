@@ -72,6 +72,7 @@ struct State {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+    num_vertices: u32,
     window: Window,
 }
 
@@ -85,6 +86,8 @@ impl State {
             backends: wgpu::Backends::all(),
             ..Default::default()
         });
+
+        let num_vertices = VERTICES.len() as u32;
 
         // # Safety
         //
@@ -218,6 +221,7 @@ impl State {
             vertex_buffer,
             index_buffer,
             num_indices,
+            num_vertices,
             window,
         }
     }

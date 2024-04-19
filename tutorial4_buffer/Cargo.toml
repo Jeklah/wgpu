@@ -36,3 +36,7 @@ glob = "0.3"
 [[bin]]
 name = "tutorial4_buffer"
 path = "src/main.rs"
+
+[[bin]]
+name = "tutorial4_challenge"
+path = "src/challenge.rs"

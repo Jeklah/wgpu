@@ -51,7 +51,7 @@ impl Texture {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
+            usage: wgpu::TextureUsages::SAMPLED | wgpu::TextureUsages::COPY_DST,
         });
 
         queue.write_texture(

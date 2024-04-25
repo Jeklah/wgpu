@@ -45,6 +45,6 @@ glob = "0.3"
 name = "tutorial5-textures"
 path = "src/main.rs"
 
-#[[bin]]
-#name = "tutorial5-challenge"
-#path = "src/challenge.rs"
+[[bin]]
+name = "tutorial5-challenge"
+path = "src/challenge.rs"

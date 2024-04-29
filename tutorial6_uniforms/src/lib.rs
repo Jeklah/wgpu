@@ -5,6 +5,7 @@ use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 use WindowEvent::KeyboardInput;
@@ -140,10 +141,10 @@ impl CameraController {
     fn process_events(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
+                event:
+                    KeyEvent {
                         state,
-                        virtual_keycode: Some(keycode),
+                        physical_key: PhysicalKey(Some(keycode)),
                         ..
                     },
                 ..
@@ -214,8 +215,8 @@ impl CameraController {
     }
 }
 
-struct State{
-    surface: wgpu::Surface,
+struct State<'a> {
+    surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -232,17 +233,20 @@ struct State{
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    window: Window,
+    window: &'a Window,
 }
 
-impl State {
-    async fn new(window: Window) -> Self {
+impl<'a> State<'a> {
+    async fn new(window: &'a Window) -> State<'a> {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            baackends: wgpu::Backends::all(),
+            #[cfg(not(target_arch = "wasm32"))]
+            backends: wgpu::Backends::PRIMARY,
+            #[cfg(target_arch = "wasm32")]
+            backendd: wgpu::Backends::GL,
             ..Default::default()
         });
 
@@ -257,7 +261,7 @@ impl State {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
-            }]
+            })
             .await
             .unwrap();
         let (device, queue) = adapter
@@ -272,9 +276,9 @@ impl State {
                     } else {
                         wgpu::Limits::default()
                     },
-                ),
+                },
                 None, // Trace path
-            }
+            )
             .await
             .unwrap();
 
@@ -470,7 +474,7 @@ impl State {
         }
     }
 
-    pub fn window (&self) -> &Window {
+    pub fn window(&self) -> &Window {
         &self.window
     }
 
@@ -548,7 +552,7 @@ impl State {
     }
 }
 
-#[cfg(target_arch = "wasm32"), wasm_bindgen(start))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 pub async fn run() {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
@@ -572,7 +576,74 @@ pub async fn run() {
             .and_then(|win| win.document())
             .and_then(|doc| {
                 let dst = doc.get_element_by_id("wasm-example")?;
-            }
+                let canvas = web_sys::Element::from(window.canvas()?);
+                dst.append_child(&canvas).ok()?;
+                Some(())
+            })
+            .expect("couldn't attach canvas to document");
     }
-}
 
+    // State::new uses async code, so we're going to wait for it to finish
+    let mut state = State::new(&window).await;
+    let mut surface_configured = false;
+
+    event_loop
+        .run(move |event, control_flow| {
+            match event {
+                Event::WindowEvent {
+                    ref event,
+                    window_id,
+                } if window_id == state.window().id() => {
+                    if !state.input(event) {
+                        match event {
+                            WindowEvent::CloseRequested
+                            | WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        virtual_keycode: PhysicalKey::Code(KeyCode::Escape),
+                                        ..
+                                    },
+                                ..
+                            } => control_flow.exit(),
+                            WindowEvent::Resized(physical_size) => {
+                                surface_configured = true;
+                                state.resize(*physical_size);
+                            }
+                            WindowEvent::RedrawRequested => {
+                                // This tells winit that we want another frame after this one
+                                state.window().request_redraw();
+
+                                if !surface_configured {
+                                    return;
+                                }
+
+                                state.update();
+                                match state.render() {
+                                    Ok(_) => {}
+                                    // Reconfigure the surface if it's lost or outdated
+                                    Err(
+                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                                    ) => state.resize(state.size),
+
+                                    // The system is out of memory, we should probably quit
+                                    Err(wgpu::SurfaceError::OutOfMemory) => {
+                                        log::error!("Out of memory");
+                                        control_flow.exit();
+                                    }
+
+                                    // This happens when the a frame takes too long to present
+                                    Err(wgpu::SurfaceError::Timeout) => {
+                                        log::warn!("Surface timeout");
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        })
+        .unwrap();
+}

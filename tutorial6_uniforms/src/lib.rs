@@ -144,34 +144,34 @@ impl CameraController {
                 event:
                     KeyEvent {
                         state,
-                        physical_key: PhysicalKey(Some(keycode)),
+                        physical_key: PhysicalKey::Code(keycode),
                         ..
                     },
                 ..
             } => {
                 let is_pressed = *state == ElementState::Pressed;
                 match keycode {
-                    VirtualKeyCode::Space => {
+                    KeyCode::Space => {
                         self.is_up_pressed = is_pressed;
                         true
                     }
-                    VirtualKeyCode::LShift => {
+                    KeyCode::ShiftLeft => {
                         self.is_down_pressed = is_pressed;
                         true
                     }
-                    VirtualKeyCode::W | VirtualKeyCode::Up => {
+                    KeyCode::KeyW | KeyCode::ArrowUp => {
                         self.is_forward_pressed = is_pressed;
                         true
                     }
-                    VirtualKeyCode::A | VirtualKeyCode::Left => {
+                    KeyCode::KeyA | KeyCode::ArrowLeft => {
                         self.is_left_pressed = is_pressed;
                         true
                     }
-                    VirtualKeyCode::S | VirtualKeyCode::Down => {
+                    KeyCode::KeyS | KeyCode::ArrowDown => {
                         self.is_backward_pressed = is_pressed;
                         true
                     }
-                    VirtualKeyCode::D | VirtualKeyCode::Right => {
+                    KeyCode::KeyD | KeyCode::ArrowRight => {
                         self.is_right_pressed = is_pressed;
                         true
                     }
@@ -268,10 +268,10 @@ impl<'a> State<'a> {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::empty(),
+                    required_features: wgpu::Features::empty(),
                     // WebGL doesn't support all of wgpu's features so if
                     // we're building for the web we'll have to disable some
-                    limits: if cfg!(target_arch = "wasm32") {
+                    required_limits: if cfg!(target_arch = "wasm32") {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()
@@ -292,7 +292,7 @@ impl<'a> State<'a> {
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SuurfaceConfiguration {
+        let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
@@ -300,6 +300,7 @@ impl<'a> State<'a> {
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
+            desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
 
@@ -389,7 +390,7 @@ impl<'a> State<'a> {
             label: Some("camera_bind_group"),
         });
 
-        let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
@@ -563,7 +564,7 @@ pub async fn run() {
         }
     }
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     #[cfg(target_arch = "wasm32")]
@@ -601,7 +602,7 @@ pub async fn run() {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        virtual_keycode: PhysicalKey::Code(KeyCode::Escape),
+                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
                                         ..
                                     },
                                 ..

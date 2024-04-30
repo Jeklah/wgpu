@@ -4,11 +4,10 @@ use std::iter;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
-use WindowEvent::KeyboardInput;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -47,7 +46,7 @@ impl Vertex {
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [-0.0868241, -0.49240386, 0.0],
+        position: [-0.0868241, 0.49240386, 0.0],
         tex_coords: [0.4131759, 0.00759614],
     }, // A
     Vertex {
@@ -55,11 +54,11 @@ const VERTICES: &[Vertex] = &[
         tex_coords: [0.0048659444, 0.43041354],
     }, // B
     Vertex {
-        position: [-0.21918549, 0.44939706, 0.0],
+        position: [-0.21918549, -0.44939706, 0.0],
         tex_coords: [0.28081453, 0.949397],
     }, // C
     Vertex {
-        position: [0.35966998, 0.3473291, 0.0],
+        position: [0.35966998, -0.3473291, 0.0],
         tex_coords: [0.85967, 0.8473291],
     }, // D
     Vertex {
@@ -254,7 +253,7 @@ impl<'a> State<'a> {
         //
         // The surface needs to live as long as the window that created it
         // State owns the window so this should be safe.
-        let surface = unsafe { instance.create_surface(&window) }.unwrap();
+        let surface = { instance.create_surface(window) }.unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -506,7 +505,7 @@ impl<'a> State<'a> {
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_frame()?;
+        let output = self.surface.get_current_texture()?;
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());

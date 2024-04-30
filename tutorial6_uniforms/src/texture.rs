@@ -46,7 +46,7 @@ impl Texture {
 
         queue.write_texture(
             wgpu::ImageCopyTexture {
-                aspect: wgpu::TextureAspect::ALL,
+                aspect: wgpu::TextureAspect::All,
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,

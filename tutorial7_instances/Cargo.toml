@@ -40,3 +40,7 @@ web-sys = { version = "0.3", features = [
 anyhow = "1.0"
 fs_extra = "1.2"
 glob = "0.3"
+
+[[bin]]
+name = "tutorial7_instancing"
+path = "src/main.rs"

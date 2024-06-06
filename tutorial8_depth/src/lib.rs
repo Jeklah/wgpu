@@ -3,10 +3,9 @@ use std::iter;
 use cgmath::prelude::*;
 use wgpu::util::DeviceExt;
 use winit::{
-    event::WindowEvent,
+    //event::WindowEvent,
     event::*,
     event_loop::{ControlFlow, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 
@@ -147,9 +146,9 @@ impl CameraController {
         match event {
             WindowEvent::KeyboardInput {
                 input:
-                    KeyEvent {
+                    KeyboardInput {
                         state,
-                        virtual_keyboard: Some(keycode),
+                        virtual_keycode: Some(keycode),
                         ..
                     },
                 ..
@@ -330,8 +329,8 @@ impl State {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: if cfg!(target_arch = "wasm32") {
+                    features: wgpu::Features::empty(),
+                    limits: if cfg!(target_arch = "wasm32") {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()
@@ -360,7 +359,6 @@ impl State {
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
 
@@ -677,7 +675,7 @@ pub async fn run() {
         }
     }
 
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     #[cfg(target_arch = "wasm32")]
@@ -700,7 +698,7 @@ pub async fn run() {
     }
 
     // State::new uses async code, so we're going to wait for it to finish.
-    let mut state = State::new(&window).await;
+    let mut state = State::new(window).await;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {

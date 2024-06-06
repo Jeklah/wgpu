@@ -43,6 +43,6 @@ glob = "0.3"
 name = "tutorial8_depth"
 path = "src/main.rs"
 
-#[[bin]]
-#name = "tutorial8_depth_challenge"
-#path = "src/challenge.rs"
+[[bin]]
+name = "tutorial8_depth_challenge"
+path = "src/challenge.rs"

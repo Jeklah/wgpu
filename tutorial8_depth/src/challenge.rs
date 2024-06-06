@@ -6,8 +6,8 @@ use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
-    keyboard::{KeyCode, PhysicalKey},
-    window::WindowBuilder,
+    /*keyboard::{KeyCode, PhysicalKey},*/
+    window::{Window, WindowBuilder},
 };
 
 mod texture;
@@ -21,8 +21,9 @@ struct Vertex {
 
 impl Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
+        use std::mem;
         wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            array_stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -31,7 +32,7 @@ impl Vertex {
                     format: wgpu::VertexFormat::Float32x3,
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
                 },
@@ -94,6 +95,13 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0,  0.0, 0.0, 1.0,
 );
 
+const NUM_INSTANCES_PER_ROW: u32 = 10;
+const INSTANCE_DISPLACEMENT: cgmath::Vector3<f32> = cgmath::Vector3::new(
+    NUM_INSTANCES_PER_ROW as f32 * 0.5,
+    0.0,
+    NUM_INSTANCES_PER_ROW as f32 * 0.5,
+);
+
 struct Camera {
     eye: cgmath::Point3<f32>,
     target: cgmath::Point3<f32>,
@@ -115,7 +123,7 @@ impl Camera {
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
-    view_proj: cgmath::Matrix4<f32>,
+    view_proj: [[f32; 4]; 4],
 }
 
 impl CameraUniform {
@@ -129,7 +137,6 @@ impl CameraUniform {
         self.view_proj = (OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix()).into();
     }
 }
-
 struct CameraController {
     speed: f32,
     is_forward_pressed: bool,
@@ -152,29 +159,29 @@ impl CameraController {
     fn process_events(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
+                input:
+                    KeyboardInput {
                         state,
-                        physical_key: PhysicalKey::Code(keycode),
+                        virtual_keycode: Some(keycode),
                         ..
                     },
                 ..
             } => {
                 let is_pressed = *state == ElementState::Pressed;
                 match keycode {
-                    KeyCode::KeyW | KeyCode::ArrowUp => {
+                    VirtualKeyCode::W | VirtualKeyCode::Up => {
                         self.is_forward_pressed = is_pressed;
                         true
                     }
-                    KeyCode::KeyS | KeyCode::ArrowDown => {
+                    VirtualKeyCode::S | VirtualKeyCode::Down => {
                         self.is_backward_pressed = is_pressed;
                         true
                     }
-                    KeyCode::KeyA | KeyCode::ArrowLeft => {
+                    VirtualKeyCode::A | VirtualKeyCode::Left => {
                         self.is_left_pressed = is_pressed;
                         true
                     }
-                    KeyCode::KeyD | KeyCode::ArrowRight => {
+                    VirtualKeyCode::D | VirtualKeyCode::Right => {
                         self.is_right_pressed = is_pressed;
                         true
                     }
@@ -218,7 +225,7 @@ impl CameraController {
 }
 
 struct Instance {
-    position: cgmath::Point3<f32>,
+    position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
 }
 
@@ -327,12 +334,12 @@ impl DepthPass {
             label: Some("depth_pass_bind_group"),
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::BufferInitDescriptor {
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Depth Pass VB"),
             contents: bytemuck::cast_slice(DEPTH_VERTICES),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        let index_buffer = device.create_buffer_init(&wgpu::BufferInitDescriptor {
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Depth Pass IB"),
             contents: bytemuck::cast_slice(DEPTH_INDICES),
             usage: wgpu::BufferUsages::INDEX,
@@ -349,7 +356,7 @@ impl DepthPass {
             source: wgpu::ShaderSource::Wgsl(include_str!("challenge.wgsl").into()),
         });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelneDescriptor {
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Depth Pass Render Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -421,7 +428,7 @@ impl DepthPass {
     }
 
     fn render(&self, view: &wgpu::TextureView, encoder: &mut wgpu::CommandEncoder) {
-        let mut render_pass = encoder.beging_render_pass(&wgpu::RenderPassDescriptor {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Depth Visual Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
@@ -443,8 +450,8 @@ impl DepthPass {
     }
 }
 
-struct State<'a> {
-    surface: wgpu::Surface<'a>,
+struct State {
+    surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -465,24 +472,21 @@ struct State<'a> {
     #[allow(dead_code)]
     instance_buffer: wgpu::Buffer,
     depth_pass: DepthPass,
-    window: &'a Window,
+    window: Window,
 }
 
-impl<'a> State<'a> {
-    async fn new(window: &'a Window) -> State<'a> {
+impl State {
+    async fn new(window: Window) -> Self {
         let size = window.inner_size();
 
         // The instance is handle to our GPU.
         // Backend::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            #[cfg(not(target_arch = "wasm32"))]
-            backends: wgpu::Backends::PRIMARY,
-            #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::GL,
+            backends: wgpu::Backends::all(),
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window).unwrap();
+        let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -496,8 +500,8 @@ impl<'a> State<'a> {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: if cfg!(targeT_arch = "wasm32") {
+                    features: wgpu::Features::empty(),
+                    limits: if cfg!(target_arch = "wasm32") {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()
@@ -524,13 +528,12 @@ impl<'a> State<'a> {
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
         };
 
         let diffuse_bytes = include_bytes!("happy-tree.png");
-        let diffuse_texture = 
+        let diffuse_texture =
             texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png").unwrap();
-        
+
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -559,7 +562,7 @@ impl<'a> State<'a> {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResrouce::TextureView(&diffuse_texture.view),
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
@@ -601,7 +604,10 @@ impl<'a> State<'a> {
                     let rotation = if position.is_zero() {
                         // This is needed so an object at (0, 0, 0) won't get scaled to zero
                         // as quaternions can effect scale if they're not created correctly.
-                        cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_y(), cgmath::Deg(0.0))
+                        cgmath::Quaternion::from_axis_angle(
+                            cgmath::Vector3::unit_y(),
+                            cgmath::Deg(0.0),
+                        )
                     } else {
                         cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
                     };
@@ -627,7 +633,7 @@ impl<'a> State<'a> {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
                         min_binding_size: None,
-                    }
+                    },
                     count: None,
                 }],
                 label: Some("camera_bind_group_layout"),
@@ -637,12 +643,12 @@ impl<'a> State<'a> {
             layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: camera.buffer.as_entrie_binding(),
+                resource: camera_buffer.as_entire_binding(),
             }],
             label: Some("camera_bind_group"),
         });
 
-        let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Main Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
@@ -654,7 +660,7 @@ impl<'a> State<'a> {
                 push_constant_ranges: &[],
             });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelneDescriptor {
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
@@ -684,7 +690,7 @@ impl<'a> State<'a> {
                 conservative: false,
             },
             depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::DEPTH_FORMAT,
+                format: texture::Texture::DEPTH_FORMAT,
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
@@ -739,7 +745,7 @@ impl<'a> State<'a> {
             window,
         }
     }
-    
+
     pub fn window(&self) -> &Window {
         &self.window
     }
@@ -749,7 +755,6 @@ impl<'a> State<'a> {
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
-            self.config.aspect_ratio = new_size.width as f64 / new_size.height as f64;
             self.surface.configure(&self.device, &self.config);
             self.depth_pass.resize(&self.device, &self.config);
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
@@ -769,7 +774,7 @@ impl<'a> State<'a> {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
     }
-    
+
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
@@ -834,66 +839,54 @@ fn main() {
 
 async fn run() {
     env_logger::init();
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     // State::new uses async code, so we're going to wait for it to finish
-    let mut state = State::new(&window).await;
-    let mut surface_configured = false;
+    let mut state = State::new(window).await;
+    // let mut surface_configured = false;
 
-    event_loop
-        .run(move |event, control_flow| {
-            match event {
-                Event::WindowEvent {
-                    ref event,
-                    window_id,
-                } if window_id == state.window().id() => {
-                    if !state.input(event) {
-                        match event {
-                            WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                        ..
-                                    },
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            ref event,
+            window_id,
+        } if window_id == state.window().id() => {
+            if !state.input(event) {
+                match event {
+                    WindowEvent::CloseRequested
+                    | WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
                                 ..
-                            } => control_flow.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                surface_configured = true;
-                                state.resize(*physical_size);
-                            }
-                            WindowEvent::RedrawRequested => {
-                                // This tells winit that we want another frame after this one
-                                state.window().request_redraw();
-
-                                if !surface_configured {
-                                    return;
-                                }
-
-                                state.update();
-                                match state.render() {
-                                    Ok(_) => {}
-                                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => {
-                                        state.resize(state.size);
-                                    }
-                                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                                        log::error!("Out of memory");
-                                        control_flow.exit();
-                                    }
-                                    Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Surface Timeout");
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
+                            },
+                        ..
+                    } => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(physical_size) => {
+                        state.resize(*physical_size);
                     }
+                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        state.resize(**new_inner_size);
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        })
-        .unwrap();
+        }
+        Event::RedrawRequested(window_id) if window_id == state.window().id() => {
+            state.update();
+            match state.render() {
+                Ok(_) => {}
+                Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                    state.resize(state.size);
+                }
+                Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface Timeout"),
+            }
+        }
+        Event::MainEventsCleared => {
+            state.window().request_redraw();
+        }
+        _ => {}
+    });
 }

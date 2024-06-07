@@ -13,7 +13,7 @@ use winit::{
 use wasm_bindgen::prelude::*;
 
 mod model;
-mod resources;
+mod resource;
 mod texture;
 
 use model::{DrawModel, Vertex};
@@ -92,14 +92,13 @@ impl CameraController {
         match event {
             WindowEvent::KeyboardInput {
                 event:
-                    KeyboardEvent {
+                    KeyEvent {
                         state,
                         physical_key: PhysicalKey::Code(keycode),
                         ..
                     },
                 ..
-            }
-            _ => {
+            } => {
                 let is_pressed = *state == ElementState::Pressed;
                 match keycode {
                     KeyCode::Space => {
@@ -136,7 +135,7 @@ impl CameraController {
     fn update_camera(&self, camera: &mut Camera) {
         let forward = camera.target - camera.eye;
         let forward_norm = forward.normalize();
-        let forward_mag - forward.magnitude();
+        let forward_mag = forward.magnitude();
 
         // Prevents glitching when camera gets too close to the
         // center of the scene.
@@ -193,7 +192,7 @@ impl InstanceRaw {
             // We need to switch from using a step mode of Vertex to Instance
             // This means that our shaders will only change to use the next
             // instance when the shader starts processing a new instance
-            step_mode: wgpu::InputStepMode::Instance,
+            step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
@@ -224,6 +223,7 @@ struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     obj_model: model::Model,
     camera: Camera,
@@ -313,7 +313,7 @@ impl<'a> State<'a> {
                         },
                         count: None,
                     },
-                    wgou::BindGroupLayoutEntry {
+                    wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
@@ -393,14 +393,14 @@ impl<'a> State<'a> {
            layout: &camera_bind_group_layout, 
            entries: &[wgpu::BindGroupEntry {
                binding: 0,
-               resource: camera.buffer.as_entire_binding(),
+               resource: camera_buffer.as_entire_binding(),
            }],
            label: Some("camera_bind_group"),
         });
 
         log::warn!("Load model");
         let obj_model =
-            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
@@ -432,7 +432,7 @@ impl<'a> State<'a> {
                 entry_point: "fs_main",
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blind: Some(wgpu::BlendState {
+                    blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent::REPLACE,
                         alpha: wgpu::BlendComponent::REPLACE,
                     }),
@@ -610,7 +610,7 @@ pub async fn run() {
 
     // State::new uses async code, so we're going to wait for it to finish
     let mut state = State::new(&window).await;
-    let mut sruface_configured = false;
+    let mut surface_configured = false;
 
     event_loop
         .run(move |event, control_flow| {
@@ -626,7 +626,7 @@ pub async fn run() {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(Keycode::Escape),
+                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
                                         ..
                                     },
                                 ..

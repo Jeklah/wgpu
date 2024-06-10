@@ -172,7 +172,9 @@ struct Instance {
 impl Instance {
     fn to_raw(&self) -> InstanceRaw {
         InstanceRaw {
-            model: (cgmath::Matrix4::from_translation(self.position) * cgmath::Matrix4::from(self.rotation)).into(),
+            model: (cgmath::Matrix4::from_translation(self.position)
+                * cgmath::Matrix4::from(self.rotation))
+            .into(),
         }
     }
 }
@@ -254,7 +256,7 @@ impl<'a> State<'a> {
             ..Default::default()
         });
 
-        let surface =  instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -350,7 +352,7 @@ impl<'a> State<'a> {
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let position = cgmath::Vector3 { x, y: 0.0, z };
-                    
+
                     let rotation = if position.is_zero() {
                         cgmath::Quaternion::from_axis_angle(
                             cgmath::Vector3::unit_z(),
@@ -374,28 +376,26 @@ impl<'a> State<'a> {
 
         let camera_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                ],
+                    count: None,
+                }],
                 label: Some("camera_bind_group_layout"),
             });
 
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-           layout: &camera_bind_group_layout, 
-           entries: &[wgpu::BindGroupEntry {
-               binding: 0,
-               resource: camera_buffer.as_entire_binding(),
-           }],
-           label: Some("camera_bind_group"),
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
         });
 
         log::warn!("Load model");
@@ -477,6 +477,7 @@ impl<'a> State<'a> {
             camera_controller,
             camera_buffer,
             camera_bind_group,
+            camera_bind_group_layout,
             camera_uniform,
             instances,
             instance_buffer,
@@ -493,7 +494,7 @@ impl<'a> State<'a> {
         if new_size.width > 0 && new_size.height > 0 {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
-            size = new_size;
+            self.size = new_size;
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture =
@@ -507,9 +508,9 @@ impl<'a> State<'a> {
 
     fn update(&mut self) {
         self.camera_controller.update_camera(&mut self.camera);
-        log:info!("{:?}", self.camera);
+        log::info!("{:?}", self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
-        log::info!("{:?}" self.camera_uniform);
+        log::info!("{:?}", self.camera_uniform);
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
@@ -525,7 +526,7 @@ impl<'a> State<'a> {
 
         let mut encoder = self
             .device
-            .create_command_encode(&wgpu::CommandEncoderDescriptor {
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
 
@@ -577,7 +578,7 @@ impl<'a> State<'a> {
 pub async fn run() {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
-            std::panic::set_hook(Bok::new(console_error_panic_hook::hook));
+            std::panic::set_hook(Box::new(console_error_panic_hook::hook));
             console_log::init_with_level(log::Level::Info).expect("Couldn't initialize logger");
         } else {
             env_logger::init();
@@ -593,7 +594,7 @@ pub async fn run() {
 
     #[cfg(target_arch = "wasm32")]
     {
-        use winit::dpi::PhysicalSize; 
+        use winit::dpi::PhysicalSize;
         let _ = window.request_inner_size(PhysicalSize::new(450, 400));
 
         use winit::platform::web::WindowExtWebSys;
@@ -646,7 +647,9 @@ pub async fn run() {
                                 state.update();
                                 match state.render() {
                                     Ok(_) => {}
-                                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                                    Err(
+                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                                    ) => {
                                         state.resize(state.size);
                                     }
                                     Err(wgpu::SurfaceError::OutOfMemory) => {

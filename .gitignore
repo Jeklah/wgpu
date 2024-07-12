@@ -5,3 +5,6 @@
 
 /target
 **/*.lock
+
+# Added by IntelliJ IDEA
+**/.idea

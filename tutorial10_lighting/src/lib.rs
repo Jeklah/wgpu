@@ -20,10 +20,11 @@ use model::{DrawLight, DrawModel, Vertex};
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-   1.0,  0.0, 0.0, 0.0, 
-   0.0,  1.0, 0.0, 0.0,
-   0.0,  0.0, 0.5, 0.0,
-   0.0,  0.0, 0.0, 1.0,
+   1.0, 0.0, 0.0, 0.0, 
+   0.0, 1.0, 0.0, 0.0,
+   0.0, 0.0, 0.5, 0.5,
+   0.0, 0.0, 0.0, 1.0
+
 );
 
 const NUM_INSTANCES_PER_ROW: u32 = 10;
@@ -418,9 +419,10 @@ impl<'a> State<'a> {
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
-                        },
+                    },
                 ],
                 label: Some("texture_bind_group_layout"),
+                layout: todo!(),
             });
 
         let camera = Camera {
@@ -433,7 +435,7 @@ impl<'a> State<'a> {
             zfar: 100.0,
         };
 
-        let camera_uniform = CameraUniform::new(0.2);
+        let camera_uniform = CameraController::new(0.2);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
@@ -488,7 +490,8 @@ impl<'a> State<'a> {
                         count: None,
                     }],
                     label: Some("camera_bind_group_layout"),
-        });
+                layout: todo!(),
+            });
 
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupLayoutDescriptor { 
             layout: &camera_bind_group_layout,
@@ -501,11 +504,328 @@ impl<'a> State<'a> {
         });
 
         let obj_model = 
-            resources::load_model("cube.obj", &device, &queue, wgpu::TextureFormat::Bgra8UnormSrgb).unwrap();
-            label: Some("camera_bind_group"),
+            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layuout)
+            .await
+            .unwrap();
+
+        let light_uniform = LightUniform {
+            position: [2.0, 2.0, 2.0],
+            _padding: 0,
+            color: [1.0, 1.0, 1.0],
+            _padding2: 0,
+        };
+
+        let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Light VB"),
+            contents: bytemuck::cast_slice(&[light_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let obj_model = resources::load_model("cube.obj", &device, &queue).unwrap();
+        let light_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+                label: None,
+            });
 
+        let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &light_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: light_buffer.as_entire_binding(),
+                },
+            ],
+            label: None,
+        });
 
-            
+        let depth_texture = Texture::create_depth_texture(&device, &config, "depth_texture");
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[
+                    &camera_bind_group_layout,
+                    &texture_bind_group_layuout,
+                    &light_bind_group_layout,
+                ],
+                push_constant_ranges: &[],
+            });
+
+        let render_pipeline = {
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Main Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            };
+
+            create_render_pipeline(
+                &device,
+                &render_pipeline_layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[model::ModelVertex::desc(), InstanceRaw::desc()],
+                shader,
+            )
+        };
+
+        let light_render_pipeline = {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Light Pipeline Layout"),
+                bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Light Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("light.wgsl").into()),
+            };
+            create_render_pipeline(
+                &device,
+                &layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[model::ModelVertex::desc()],
+                shader,
+            )
+        };
+
+        Self {
+            surface,
+            device,
+            queue,
+            config,
+            render_pipeline,
+            obj_model,
+            camera,
+            camera_controller,
+            camera_buffer,
+            camera_bind_group,
+            camera_uniform,
+            instances,
+            instance_buffer,
+            depth_texture,
+            size,
+            light_uniform,
+            light_buffer,
+            light_bind_group,
+            light_render_pipeline,
+            window,
+        }
+    }
+
+    pub fn window(&self) -> &Window {
+        &self.window
+    }
+
+    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        if new_size.width > 0 && new_size.height > 0 {
+            self.size = new_size;
+            self.config.width = new_size.width;
+            self.config.height = new_size.height;
+            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+            self.surface.configure(&self.device, &self.config);
+            self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+        }
+    }
+
+    fn input(&mut self, event: &WindowEvent) -> bool {
+        self.camera_controller.process_events(event)
+    }
+
+    fn update(&mut self) {
+        self.camera_controller.update_camera(&mut self.camera);
+        self.camera_uniform.update_view_proj(&self.camera);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+
+        // Update the light
+        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
+        self.light_uniform.position =
+            (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
+                * old_position)
+                .into();
+        self.queue.write_buffer(
+            &self.light_buffer,
+            0,
+            bytemuck::cast_slice(&[self.light_uniform]),
+        );
+    }
+
+    fn render(mut &self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    }
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            render_pass.set_pipeline(&self.light_render_pipeline);
+            render_pass.draw_light_model(
+                &self.obj_model,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw_model_instanced(
+                &self.obj_model,
+                0..self.instances.len() as u32,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
+        }
+
+        self.queue.submit(iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
+pub async fn run() {
+    cfg_if::cfg_if! {
+        if #[cfg(target_arch = "wasm32")] {
+            std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+            console_log::init_with_level(log::Level::Warn).expect("could not initialize logger");
+        } else {
+            env_logger::init();
+        }
+    }
+
+    let event_loop = EventLoop::new().unwrap();
+    let title = env!("CARGO_PKG_NAME");
+    let window = winit::window::WindowBuilder::new()
+        .with_title(title)
+        .build(&event_loop)
+        .unwrap();
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        // Winit prevents sizing with CSS, so we have to set the size manually
+        // when on web.
+        use winit::dpi::PhysicalSize;
+        let _ = window.request_inner_size(PhysicalSize::new(450, 400));
+
+        use winit::platform::web::WindowExtWebSys;
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| {
+                let canvas = web_sys::Element::from(window.canvas()?);
+                if let Some(dst) = doc.get_element_by_id("wasm-example") {
+                    dst.append_child(&canvas).ok()?;
+                } else {
+                    doc.body().append_child(&canvas).ok()?;
+                }
+                Some(())
+            })
+            .expect("couldn't attach canvas to document");
+    }
+
+    // State::new uses async code, so we're going to wait for it to finish
+    let mut state = State::new(&window).await;
+    let mut surface_configured = false;
+
+    event_loop
+        .run(move |event, control_flow| {
+            match event {
+                Event::WindowEvent { 
+                    ref event,
+                    window_id,
+                } if window_id == state.window().id() => {
+                    if !state.input(event) {
+                        match event {
+                            WindowEvent::CloseRequested
+                            | WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                        ..
+                                    },
+                                ..
+                            } => *control_flow.exit(),
+                            WindowEvent::Resized(physical_size) => {
+                                surface_configured = true;
+                                state.resize(*physical_size);
+                            }
+                            WindowEvent::RedrawRequested => {
+                                // This tells winit that we want another frame after this one
+                                state.window().request_redraw();
+
+                                if !surface_configured {
+                                    return;
+                                }
+
+                                state.update();
+                                match state.render() {
+                                    Ok(_) => {}
+                                    // Recreate the swap chain if lost
+                                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => state.resize(state.size),
+                                    // The system is out of memory, we should probably quit
+                                    Err(wgpu::SurfaceError::OutOfMemory) => {
+                                        log::error!("Out of memory");
+                                        control_flow.exit();
+                                    } 
+                                    // This happens when a frame takes too long to present
+                                    Err(wgpu::SurfaceError::Timeout) => {
+                                        log::warn!("Frame took too long to present");
+                                    }
+                                    // All other errors (Outdated, Timeout) should be resolved by the next frame
+                                    Err(e) => eprintln!("{:?}", e),
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        })
+        .unwrap();
+}
+

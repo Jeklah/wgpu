@@ -1,4 +1,4 @@
-#!/usr/bin/env/python3
+#!/usr/bin/env python3
 # pylint: disable=missing-docstring
 
 from http.server import HTTPServer, SimpleHTTPRequestHandler, test

@@ -140,7 +140,7 @@ impl CameraController {
         let forward_norm = forward.normalize();
         let forward_mag = forward.magnitude();
 
-        // Preventsglitching when camera gets too close to the center of the scene
+        // Prevents glitching when camera gets too close to the center of the scene
         if self.is_forward_pressed && forward_mag > self.speed {
             camera.eye += forward_norm * self.speed;
         }
@@ -422,7 +422,6 @@ impl<'a> State<'a> {
                     },
                 ],
                 label: Some("texture_bind_group_layout"),
-                layout: todo!(),
             });
 
         let camera = Camera {
@@ -435,7 +434,7 @@ impl<'a> State<'a> {
             zfar: 100.0,
         };
 
-        let camera_uniform = CameraController::new(0.2);
+        let camera_controller = CameraController::new(0.2);
 
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera);
@@ -455,7 +454,7 @@ impl<'a> State<'a> {
 
                     let position = cgmath::Vector3 { x, y: 0.0, z };
 
-                    let rotation = if position.iz_zero() {
+                    let rotation = if position.is_zero() {
                         cgmath::Quaternion::from_axis_angle(
                             cgmath::Vector3::unit_z(),
                             cgmath::Deg(0.0),
@@ -470,9 +469,9 @@ impl<'a> State<'a> {
             .collect::<Vec<_>>();
 
         let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(&wgpu::util::Buffinitdescriptor {
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance Buffer"),
-            content: bytemuck::cast_slice(&instance_data),
+            contents: bytemuck::cast_slice(&instance_data),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
@@ -489,10 +488,9 @@ impl<'a> State<'a> {
                     count: None,
                 }],
                 label: Some("camera_bind_group_layout"),
-                layout: todo!(),
             });
 
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupLayoutDescriptor {
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &camera_bind_group_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -502,7 +500,7 @@ impl<'a> State<'a> {
         });
 
         let obj_model =
-            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layuout)
+            resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
@@ -543,14 +541,15 @@ impl<'a> State<'a> {
             label: None,
         });
 
-        let depth_texture = Texture::create_depth_texture(&device, &config, "depth_texture");
+        let depth_texture =
+            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
                     &camera_bind_group_layout,
-                    &texture_bind_group_layuout,
+                    &texture_bind_group_layout,
                     &light_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
@@ -622,9 +621,9 @@ impl<'a> State<'a> {
 
     fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
+            self.size = new_size;
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture =
@@ -754,7 +753,7 @@ pub async fn run() {
                 if let Some(dst) = doc.get_element_by_id("wasm-example") {
                     dst.append_child(&canvas).ok()?;
                 } else {
-                    doc.body().append_child(&canvas).ok()?;
+                    doc.body()?.append_child(&canvas).ok()?;
                 }
                 Some(())
             })
@@ -783,7 +782,7 @@ pub async fn run() {
                                         ..
                                     },
                                 ..
-                            } => *control_flow.exit(),
+                            } => control_flow.exit(),
                             WindowEvent::Resized(physical_size) => {
                                 surface_configured = true;
                                 state.resize(*physical_size);

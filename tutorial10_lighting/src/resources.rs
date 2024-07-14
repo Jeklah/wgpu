@@ -83,7 +83,7 @@ pub async fn load_model(
             ..Default::default()
         },
         |p| async move {
-            let mat_text = load_string(p).await.unwrap();
+            let mat_text = load_string(&p).await.unwrap();
             tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
         },
     )
@@ -118,7 +118,7 @@ pub async fn load_model(
         .into_iter()
         .map(|m| {
             let vertices = (0..m.mesh.positions.len() / 3)
-                .map(|i| model::Vertex {
+                .map(|i| model::ModelVertex {
                     position: [
                         m.mesh.positions[i * 3],
                         m.mesh.positions[i * 3 + 1],

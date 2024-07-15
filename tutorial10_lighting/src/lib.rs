@@ -761,7 +761,7 @@ pub async fn run() {
 
     // State::new uses async code, so we're going to wait for it to finish
     let mut state = State::new(window).await;
-    // let mut surface_configured = false;
+    let mut surface_configured = false;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -784,14 +784,15 @@ pub async fn run() {
                             ..
                         } => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(physical_size) => {
+                            surface_configured = true;
                             state.resize(*physical_size);
                         }
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                             // This tells winit that we want another frame after this one
                             state.resize(**new_inner_size);
-                            //if !surface_configured {
-                            //    return;
-                            //}
+                            if !surface_configured {
+                                return;
+                            }
                         }
                         _ => {}
                     }

@@ -65,7 +65,7 @@ pub struct Model {
 pub trait DrawModel<'a> {
     fn draw_mesh(
         &mut self,
-        model: &'a Mesh,
+        mesh: &'a Mesh,
         material: &'a Material,
         camera_bind_group: &'a wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
@@ -88,7 +88,7 @@ pub trait DrawModel<'a> {
     fn draw_model_instanced(
         &mut self,
         model: &'a Model,
-        instanced: Range<u32>,
+        instances: Range<u32>,
         camera_bind_group: &'a wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
     );

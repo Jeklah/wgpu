@@ -4,8 +4,8 @@ use cgmath::prelude::*;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
-    event_loop::EventLoop,
-    keyboard::{KeyCode, PhysicalKey},
+    event_loop::{ControlFlow, EventLoop},
+    //keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
 
@@ -94,37 +94,37 @@ impl CameraController {
     fn process_events(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
+                input:
+                    KeyboardInput {
                         state,
-                        physical_key: PhysicalKey::Code(keycode),
+                        virtual_keycode: Some(keycode),
                         ..
                     },
                 ..
             } => {
                 let is_pressed = *state == ElementState::Pressed;
                 match keycode {
-                    KeyCode::Space => {
+                    VirtualKeyCode::Space => {
                         self.is_up_pressed = is_pressed;
                         true
                     }
-                    KeyCode::ShiftLeft => {
+                    VirtualKeyCode::LShift => {
                         self.is_down_pressed = is_pressed;
                         true
                     }
-                    KeyCode::KeyW | KeyCode::ArrowUp => {
+                    VirtualKeyCode::W | VirtualKeyCode::Up => {
                         self.is_forward_pressed = is_pressed;
                         true
                     }
-                    KeyCode::KeyS | KeyCode::ArrowDown => {
+                    VirtualKeyCode::S | VirtualKeyCode::Down => {
                         self.is_backward_pressed = is_pressed;
                         true
                     }
-                    KeyCode::KeyA | KeyCode::ArrowLeft => {
+                    VirtualKeyCode::A | VirtualKeyCode::Left => {
                         self.is_left_pressed = is_pressed;
                         true
                     }
-                    KeyCode::KeyD | KeyCode::ArrowRight => {
+                    VirtualKeyCode::D | VirtualKeyCode::Right => {
                         self.is_right_pressed = is_pressed;
                         true
                     }
@@ -256,9 +256,9 @@ struct LightUniform {
     _padding2: u32,
 }
 
-struct State<'a> {
-    window: &'a Window,
-    surface: wgpu::Surface<'a>,
+struct State {
+    window: Window,
+    surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -340,8 +340,8 @@ fn create_render_pipeline(
     })
 }
 
-impl<'a> State<'a> {
-    async fn new(window: &'a Window) -> State<'a> {
+impl State {
+    async fn new(window: Window) -> State {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -354,7 +354,7 @@ impl<'a> State<'a> {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window).unwrap();
+        let surface = unsafe { instance.create_surface(&window) }.unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -368,8 +368,8 @@ impl<'a> State<'a> {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits: if cfg!(target_arch = "wasm32") {
+                    features: wgpu::Features::empty(),
+                    limits: if cfg!(target_arch = "wasm32") {
                         wgpu::Limits::downlevel_webgl2_defaults()
                     } else {
                         wgpu::Limits::default()
@@ -398,7 +398,6 @@ impl<'a> State<'a> {
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
         };
 
         let texture_bind_group_layout =
@@ -731,7 +730,7 @@ pub async fn run() {
         }
     }
 
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = EventLoop::new();
     let title = env!("CARGO_PKG_NAME");
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
@@ -761,66 +760,58 @@ pub async fn run() {
     }
 
     // State::new uses async code, so we're going to wait for it to finish
-    let mut state = State::new(&window).await;
-    let mut surface_configured = false;
+    let mut state = State::new(window).await;
+    // let mut surface_configured = false;
 
-    event_loop
-        .run(move |event, control_flow| {
-            match event {
-                Event::WindowEvent {
-                    ref event,
-                    window_id,
-                } if window_id == state.window().id() => {
-                    if !state.input(event) {
-                        match event {
-                            WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            } => control_flow.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                surface_configured = true;
-                                state.resize(*physical_size);
-                            }
-                            WindowEvent::RedrawRequested => {
-                                // This tells winit that we want another frame after this one
-                                state.window().request_redraw();
-
-                                if !surface_configured {
-                                    return;
-                                }
-
-                                state.update();
-                                match state.render() {
-                                    Ok(_) => {}
-                                    // Recreate the swap chain if lost
-                                    Err(
-                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => state.resize(state.size),
-                                    // The system is out of memory, we should probably quit
-                                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                                        log::error!("Out of memory");
-                                        control_flow.exit();
-                                    }
-                                    // This happens when a frame takes too long to present
-                                    Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Frame took too long to present");
-                                    }
-                                    // All other errors (Outdated, Timeout) should be resolved by the next frame
-                                    Err(e) => eprintln!("{:?}", e),
-                                }
-                            }
-                            _ => {}
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Poll;
+        match event {
+            Event::MainEventsCleared => state.window().request_redraw(),
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if window_id == state.window().id() => {
+                if !state.input(event) {
+                    match event {
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        WindowEvent::Resized(physical_size) => {
+                            state.resize(*physical_size);
                         }
+                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                            // This tells winit that we want another frame after this one
+                            state.resize(**new_inner_size);
+                            //if !surface_configured {
+                            //    return;
+                            //}
+                        }
+                        _ => {}
                     }
                 }
-                _ => {}
             }
-        })
-        .unwrap();
+            Event::RedrawRequested(window_id) if window_id == state.window().id() => {
+                state.update();
+                match state.render() {
+                    Ok(_) => {}
+                    // Reconfigure the surface if it's lost or outdated.
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        state.resize(state.size);
+                    }
+                    // The system is out of memory, we should probably quit.
+                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                    // We're ignoring timeouts.
+                    Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface Timeout"),
+                }
+            }
+            _ => {}
+        }
+    });
 }

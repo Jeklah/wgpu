@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use wgpu::util::RenderEncoder;
+//use wgpu::util::RenderEncoder;
 
 use crate::texture;
 
@@ -74,9 +74,9 @@ pub trait DrawModel<'a> {
         &mut self,
         mesh: &'a Mesh,
         material: &'a Material,
+        instances: Range<u32>,
         camera_bind_group: &'a wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
-        instances: Range<u32>,
     );
 
     fn draw_model(
@@ -105,16 +105,16 @@ where
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'b wgpu::BindGroup,
     ) {
-        self.draw_mesh_instanced(mesh, material, camera_bind_group, light_bind_group, 0..1);
+        self.draw_mesh_instanced(mesh, material, 0..1, camera_bind_group, light_bind_group);
     }
 
     fn draw_mesh_instanced(
         &mut self,
         mesh: &'b Mesh,
         material: &'b Material,
+        instances: Range<u32>,
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'b wgpu::BindGroup,
-        instances: Range<u32>,
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -145,9 +145,9 @@ where
             self.draw_mesh_instanced(
                 mesh,
                 material,
+                instances.clone(),
                 camera_bind_group,
                 light_bind_group,
-                instances.clone(),
             );
         }
     }
@@ -205,8 +205,8 @@ where
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-        self.set_bind_group(1, camera_bind_group, &[]);
-        self.set_bind_group(2, light_bind_group, &[]);
+        self.set_bind_group(0, camera_bind_group, &[]);
+        self.set_bind_group(1, light_bind_group, &[]);
         self.draw_indexed(0..mesh.num_elements, 0, instances);
     }
 

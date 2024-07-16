@@ -13,7 +13,7 @@ fn format_url(file_name: &str) -> reqwest::Url {
     if !origin.ends_with("learn-wgpu") {
         origin = format!("{}/learn-wgpu", origin);
     }
-    let base = reqwest::Url::parse(&format!("{}/", origin)).unwrap();
+    let base = reqwest::Url::parse(&format!("{}/", origin,)).unwrap();
     base.join(file_name).unwrap()
 }
 

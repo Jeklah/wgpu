@@ -4,7 +4,7 @@ use cgmath::prelude::*;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
-    event_loop::EventLoop,
+    event_loop::{ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
@@ -20,7 +20,7 @@ use model::{DrawLight, DrawModel, Vertex};
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-   1.0, 0.0, 0.0, 0.0, 
+   1.0, 0.0, 0.0, 0.0,
    0.0, 1.0, 0.0, 0.0,
    0.0, 0.0, 0.5, 0.5,
    0.0, 0.0, 0.0, 1.0,
@@ -347,7 +347,7 @@ impl<'a> State<'a> {
         // BackendBit::PRIMARY => Bulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(not(target_arch = "wasm32"))]
-            backends: wgpu::Backends::PRIMARY,
+            backends: wgpu::Backends::all(),
             #[cfg(target_arch = "wasm32")]
             backends: wgpu::Backends::GL,
             ..Default::default()
@@ -399,6 +399,8 @@ impl<'a> State<'a> {
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
+
+        surface.configure(&device, &config);
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -547,8 +549,8 @@ impl<'a> State<'a> {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &camera_bind_group_layout,
                     &texture_bind_group_layout,
+                    &camera_bind_group_layout,
                     &light_bind_group_layout,
                 ],
                 push_constant_ranges: &[],
@@ -622,8 +624,8 @@ impl<'a> State<'a> {
         if new_size.width > 0 && new_size.height > 0 {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
-            self.size = new_size;
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+            self.size = new_size;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
@@ -742,13 +744,13 @@ pub async fn run() {
         // Winit prevents sizing with CSS, so we have to set the size manually
         // when on web.
         use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(450, 400));
+        window.set_inner_size(PhysicalSize::new(450, 400));
 
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())
             .and_then(|doc| {
-                let canvas = web_sys::Element::from(window.canvas()?);
+                let canvas = web_sys::Element::from(window.canvas());
                 if let Some(dst) = doc.get_element_by_id("wasm-example") {
                     dst.append_child(&canvas).ok()?;
                 } else {
@@ -764,54 +766,59 @@ pub async fn run() {
     let mut surface_configured = false;
 
     event_loop
-        .run(move |event, control_flow| match event {
-            Event::WindowEvent {
-                ref event,
-                window_id,
-            } if window_id == state.window().id() => {
-                if !state.input(event) {
-                    match event {
-                        WindowEvent::CloseRequested
-                        | WindowEvent::KeyboardInput {
-                            event:
-                                KeyEvent {
-                                    state: ElementState::Pressed,
-                                    physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                    ..
-                                },
-                            ..
-                        } => control_flow.exit(),
-                        WindowEvent::Resized(physical_size) => {
-                            surface_configured = true;
-                            state.resize(*physical_size);
-                        }
-                        WindowEvent::RedrawRequested => {
-                            state.window().request_redraw();
-
-                            if !surface_configured {
-                                return;
+        .run(move |event, control_flow| {
+            match event {
+                Event::WindowEvent {
+                    ref event,
+                    window_id,
+                } if window_id == state.window().id() => {
+                    if !state.input(event) {
+                        match event {
+                            WindowEvent::CloseRequested
+                            | WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                        ..
+                                    },
+                                ..
+                            } => control_flow.exit(),
+                            WindowEvent::Resized(physical_size) => {
+                                surface_configured = true;
+                                state.resize(*physical_size);
                             }
+                            WindowEvent::RedrawRequested => {
+                                state.window().request_redraw();
 
-                            state.update();
-                            match state.render() {
-                                Ok(_) => {}
-                                Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                                    state.resize(state.size)
+                                if !surface_configured {
+                                    return;
                                 }
-                                Err(wgpu::SurfaceError::OutOfMemory) => {
-                                    log::error!("Out of memory");
-                                    control_flow.exit();
-                                }
-                                Err(wgpu::SurfaceError::Timeout) => {
-                                    log::warn!("Timeout");
+
+                                state.update();
+                                match state.render() {
+                                    Ok(_) => {}
+                                    // Reconfigure the surface if it's lost or outdated
+                                    Err(
+                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
+                                    ) => state.resize(state.size),
+                                    // The system is out of memory, we should probably quit
+                                    Err(wgpu::SurfaceError::OutOfMemory) => {
+                                        log::error!("Out of memory");
+                                        control_flow.exit();
+                                    }
+                                    // We're ignoring timeouts
+                                    Err(wgpu::SurfaceError::Timeout) => {
+                                        log::warn!("Surface Timeout")
+                                    }
                                 }
                             }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
+                _ => {}
             }
-            _ => {}
         })
         .unwrap();
 }
